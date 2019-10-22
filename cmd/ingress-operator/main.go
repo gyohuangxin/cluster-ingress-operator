@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ghodss/yaml"
 
@@ -11,6 +12,7 @@ import (
 	awsdns "github.com/openshift/cluster-ingress-operator/pkg/dns/aws"
 	azuredns "github.com/openshift/cluster-ingress-operator/pkg/dns/azure"
 	gcpdns "github.com/openshift/cluster-ingress-operator/pkg/dns/gcp"
+	libvirtdns "github.com/openshift/cluster-ingress-operator/pkg/dns/libvirt"
 	logf "github.com/openshift/cluster-ingress-operator/pkg/log"
 	"github.com/openshift/cluster-ingress-operator/pkg/manifests"
 	"github.com/openshift/cluster-ingress-operator/pkg/operator"
@@ -172,6 +174,23 @@ func createDNSProvider(cl client.Client, operatorConfig operatorconfig.Config, d
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GCP DNS provider: %v", err)
+		}
+		dnsProvider = provider
+	case configv1.LibvirtPlatformType:
+		cluster := strings.Split(dnsConfig.Spec.BaseDomain, ".")[0]
+		appDomain := strings.Replace(dnsConfig.Spec.BaseDomain, cluster, "apps", 1)
+		// LIBVIRT_URL must be set as 'qemu+ssh://x.x.x.x/system'
+		libvirtUrl := os.Getenv("LIBVIRT_URI")
+		if len(libvirtUrl) == 0 {
+			return nil, fmt.Errorf("missing environment variable, 'LIBVIRT_URI' environment variable must be set")
+		}
+		provider, err := libvirtdns.New(libvirtdns.Config{
+			Cluster: cluster,
+			Domain:  appDomain,
+			Url:     libvirtUrl,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create libvirt DNS provider: %v", err)
 		}
 		dnsProvider = provider
 	default:
